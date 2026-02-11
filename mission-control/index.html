@@ -27,7 +27,7 @@
   <h1>Mission Control <span class="muted">internal</span></h1>
   <p class="muted">Steuerzentrale für uns + Agentenaktivität. Keine Kundendaten-Inhalte nötig.</p>
 
-  <div id="auth" class="card hidden" style="max-width:420px">
+  <div id="auth" class="card" style="max-width:420px">
     <h3>Login</h3>
     <label>Email</label><input id="email" type="email"/>
     <label>Passwort</label><input id="password" type="password"/>
@@ -202,10 +202,17 @@
     };
 
     async function init(){
-      const {data:{session}}=await sb.auth.getSession();
-      if(!session){$('auth').classList.remove('hidden');$('app').classList.add('hidden');return;}
-      $('auth').classList.add('hidden');$('app').classList.remove('hidden');
-      await load();
+      try {
+        const {data:{session}}=await sb.auth.getSession();
+        if(!session){$('auth').classList.remove('hidden');$('app').classList.add('hidden');return;}
+        $('auth').classList.add('hidden');$('app').classList.remove('hidden');
+        await load();
+      } catch (e) {
+        $('auth').classList.remove('hidden');
+        $('app').classList.add('hidden');
+        $('authMsg').textContent = 'Session-Check Fehler. Bitte Login erneut.';
+        console.error(e);
+      }
     }
 
     sb.auth.onAuthStateChange(()=>init());
