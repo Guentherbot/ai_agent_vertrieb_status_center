@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Offbeat Status Center</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; margin: 24px; background:#0b1020; color:#e7ecff; }
+    h1 { margin: 0 0 8px; }
+    .muted { color:#9fb0e0; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap:12px; margin-top:16px; }
+    .card { background:#141b33; border:1px solid #2a355f; border-radius:12px; padding:14px; }
+    .pill { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; text-transform:uppercase; letter-spacing:.4px; }
+    .online { background:#123b23; color:#8cf0b0; }
+    .degraded { background:#4a3b15; color:#ffd97a; }
+    .offline { background:#48181b; color:#ff9aa0; }
+    .unknown { background:#2e3351; color:#b8c4ff; }
+    code { background:#0e1428; padding:1px 6px; border-radius:6px; }
+    .bar { display:flex; gap:8px; align-items:center; margin:10px 0 14px; }
+    button { background:#1f2a4f; color:#d9e2ff; border:1px solid #32457f; border-radius:8px; padding:8px 10px; cursor:pointer; }
+    button:hover { background:#253461; }
+    .error { color:#ffb4b8; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Offbeat Status Center <span class="muted">MVP</span></h1>
+  <p class="muted">Nur Betriebsdaten. Keine Inhalte. Keine personenbezogenen Chatdaten.</p>
+
+  <div class="bar">
+    <button id="reloadBtn">Neu laden</button>
+    <span id="meta" class="muted">lade…</span>
+  </div>
+
+  <div id="error" class="error"></div>
+  <div id="app" class="grid"></div>
+
+  <script>
+    // Public Supabase values (anon key is intended for frontend use)
+    const SUPABASE_URL = "https://xukihrjyeyatcwgmoakb.supabase.co";
+    const SUPABASE_ANON = "sb_publishable_HKiENtBKRbbQ5rywRnKDGw_xXk9ubjd";
+
+    const app = document.getElementById('app');
+    const meta = document.getElementById('meta');
+    const errorEl = document.getElementById('error');
+
+    const statusClass = (s) => {
+      if (!s) return 'unknown';
+      s = s.toLowerCase();
+      if (s === 'online') return 'online';
+      if (s === 'degraded') return 'degraded';
+      if (s === 'offline') return 'offline';
+      return 'unknown';
+    };
+
+    const fmtTs = (ts) => {
+      if (!ts) return '-';
+      try {
+        return new Date(ts).toLocaleString('de-DE');
+      } catch { return ts; }
+    };
+
+    async function loadInstances() {
+      errorEl.textContent = '';
+      app.innerHTML = '';
+      meta.textContent = 'lade…';
+
+      const url = `${SUPABASE_URL}/rest/v1/instances?select=instance_code,status,last_heartbeat_at,current_version,model_ref,environment,host_label&order=updated_at.desc.nullslast`;
+
+      const res = await fetch(url, {
+        headers: {
+          apikey: SUPABASE_ANON,
+          Authorization: `Bearer ${SUPABASE_ANON}`,
+        },
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Supabase Fehler ${res.status}: ${txt}`);
+      }
+
+      const rows = await res.json();
+      meta.textContent = `${rows.length} Instanz(en) · letzte Aktualisierung: ${new Date().toLocaleTimeString('de-DE')}`;
+
+      if (!rows.length) {
+        app.innerHTML = `<div class="card"><strong>Noch keine Instanzen</strong><div class="muted" style="margin-top:6px">Lege einen Datensatz in <code>instances</code> an, dann erscheint er hier.</div></div>`;
+        return;
+      }
+
+      app.innerHTML = rows.map(x => `
+        <div class="card">
+          <div><strong>${x.instance_code ?? 'unknown-instance'}</strong></div>
+          <div style="margin:8px 0"><span class="pill ${statusClass(x.status)}">${x.status ?? 'unknown'}</span></div>
+          <div>Heartbeat: <code>${fmtTs(x.last_heartbeat_at)}</code></div>
+          <div>Version: <code>${x.current_version ?? '-'}</code></div>
+          <div>Model: <code>${x.model_ref ?? '-'}</code></div>
+          <div>Env: <code>${x.environment ?? '-'}</code></div>
+          <div>Host: <code>${x.host_label ?? '-'}</code></div>
+        </div>
+      `).join('');
+    }
+
+    async function safeLoad() {
+      try {
+        await loadInstances();
+      } catch (err) {
+        meta.textContent = 'Fehler';
+        errorEl.textContent = err?.message || String(err);
+      }
+    }
+
+    document.getElementById('reloadBtn').addEventListener('click', safeLoad);
+    safeLoad();
+  </script>
+</body>
+</html>
