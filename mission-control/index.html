@@ -15,10 +15,12 @@
     .tab.active{background:#2b3d77}
     .hidden{display:none}
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid #2a355f;padding:8px;text-align:left;font-size:14px}
+    th,td{border-bottom:1px solid #2a355f;padding:8px;text-align:left;font-size:14px;vertical-align:top}
     input,textarea,select{padding:8px;border-radius:8px;border:1px solid #32457f;background:#0e1428;color:#e7ecff}
     input,textarea{width:100%}
     button{padding:8px 10px;border-radius:8px;border:1px solid #32457f;background:#1f2a4f;color:#d9e2ff;cursor:pointer}
+    .pill{padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #3a4f8f}
+    .danger{color:#ffb5b5}
   </style>
 </head>
 <body>
@@ -54,6 +56,10 @@
         <div class="card"><div class="muted">Work: In Arbeit</div><div id="k_work_doing" class="kpi">-</div></div>
         <div class="card"><div class="muted">Work: Blocker</div><div id="k_work_blocked" class="kpi">-</div></div>
       </div>
+      <div class="card" style="margin-top:10px">
+        <h3 class="danger">Blocker (pinned)</h3>
+        <table><thead><tr><th>Title</th><th>Owner</th><th>Updated</th></tr></thead><tbody id="t_blockers"></tbody></table>
+      </div>
     </section>
 
     <section id="work" class="panel hidden">
@@ -64,7 +70,7 @@
           <select id="workStatus"><option value="in_progress">in_progress</option><option value="done">done</option><option value="blocked">blocked</option><option value="todo">todo</option></select>
           <button id="addWork">Add</button>
         </div>
-        <table><thead><tr><th>Title</th><th>Status</th><th>Owner</th><th>Updated</th></tr></thead><tbody id="t_work"></tbody></table>
+        <table><thead><tr><th>Title</th><th>Status</th><th>Owner</th><th>Updated</th><th>Action</th></tr></thead><tbody id="t_work"></tbody></table>
       </div>
     </section>
 
@@ -93,6 +99,9 @@
 
     const $=id=>document.getElementById(id);
     const fmt=t=>t?new Date(t).toLocaleString('de-DE'):'-';
+    const esc=s=>(s||'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+
+    let workItems=[];
 
     function setTab(name){
       document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
@@ -100,6 +109,16 @@
       $(name).classList.remove('hidden');
     }
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+
+    async function logActivity(event, summary){
+      await sb.from('mc_activity').insert({source:'mission-control',event,summary});
+    }
+
+    async function updateWorkStatus(id, status){
+      await sb.from('mc_work_items').update({status}).eq('id',id);
+      await logActivity('work_status_changed', `id=${id} -> ${status}`);
+      await load();
+    }
 
     async function load(){
       const [{data:inst},{data:leads},{data:tasks},{data:todo},{data:act},{data:work}] = await Promise.all([
@@ -111,26 +130,55 @@
         sb.from('mc_work_items').select('id,title,status,owner,updated_at').order('updated_at',{ascending:false}).limit(100)
       ]);
 
+      workItems=(work||[]);
+
       $('k_instances').textContent=(inst||[]).length;
       $('k_online').textContent=(inst||[]).filter(x=>x.status==='online').length;
       $('k_leads').textContent=(leads||[]).length;
       $('k_tasks').textContent=(tasks||[]).length;
-      $('k_work_doing').textContent=(work||[]).filter(x=>x.status==='in_progress').length;
-      $('k_work_blocked').textContent=(work||[]).filter(x=>x.status==='blocked').length;
+      $('k_work_doing').textContent=workItems.filter(x=>x.status==='in_progress').length;
+      $('k_work_blocked').textContent=workItems.filter(x=>x.status==='blocked').length;
       $('meta').textContent='updated '+new Date().toLocaleTimeString('de-DE');
 
       $('t_agents').innerHTML=(inst||[]).map(x=>`<tr><td>${x.instance_code}</td><td>${x.status}</td><td>${fmt(x.last_heartbeat_at)}</td><td>${x.model_ref||'-'}</td></tr>`).join('');
       $('t_crm').innerHTML=(leads||[]).map(x=>`<tr><td>${x.full_name||'-'}</td><td>${x.company||'-'}</td><td>${x.stage}</td><td>${fmt(x.next_followup_at)}</td></tr>`).join('');
-      $('t_todo').innerHTML=(todo||[]).map(x=>`<tr><td>${x.title}</td><td>${x.status}</td><td>${fmt(x.created_at)}</td></tr>`).join('');
-      $('t_activity').innerHTML=(act||[]).map(x=>`<tr><td>${fmt(x.ts)}</td><td>${x.source}</td><td>${x.event}</td><td>${x.summary||''}</td></tr>`).join('');
-      $('t_work').innerHTML=(work||[]).map(x=>`<tr><td>${x.title}</td><td>${x.status}</td><td>${x.owner||'-'}</td><td>${fmt(x.updated_at)}</td></tr>`).join('');
+      $('t_todo').innerHTML=(todo||[]).map(x=>`<tr><td>${esc(x.title)}</td><td>${x.status}</td><td>${fmt(x.created_at)}</td></tr>`).join('');
+      $('t_activity').innerHTML=(act||[]).map(x=>`<tr><td>${fmt(x.ts)}</td><td>${esc(x.source)}</td><td>${esc(x.event)}</td><td>${esc(x.summary||'')}</td></tr>`).join('');
+
+      $('t_work').innerHTML=workItems.map(x=>`<tr>
+          <td>${esc(x.title)}</td>
+          <td>
+            <select data-work-id="${x.id}" class="work-status">
+              <option value="todo" ${x.status==='todo'?'selected':''}>todo</option>
+              <option value="in_progress" ${x.status==='in_progress'?'selected':''}>in_progress</option>
+              <option value="blocked" ${x.status==='blocked'?'selected':''}>blocked</option>
+              <option value="done" ${x.status==='done'?'selected':''}>done</option>
+            </select>
+          </td>
+          <td>${esc(x.owner||'-')}</td>
+          <td>${fmt(x.updated_at)}</td>
+          <td><button data-save-id="${x.id}">Save</button></td>
+        </tr>`).join('');
+
+      const blockers=workItems.filter(x=>x.status==='blocked');
+      $('t_blockers').innerHTML=blockers.length
+        ? blockers.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.owner||'-')}</td><td>${fmt(x.updated_at)}</td></tr>`).join('')
+        : '<tr><td colspan="3" class="muted">Keine Blocker aktuell</td></tr>';
+
+      document.querySelectorAll('button[data-save-id]').forEach(btn=>{
+        btn.onclick=async()=>{
+          const id=Number(btn.dataset.saveId);
+          const sel=document.querySelector(`select[data-work-id="${id}"]`);
+          await updateWorkStatus(id, sel.value);
+        };
+      });
     }
 
     $('refresh').onclick=load;
     $('addTodo').onclick=async()=>{
       const title=$('todoTitle').value.trim(); if(!title) return;
       await sb.from('mc_todos').insert({title,status:'open'});
-      await sb.from('mc_activity').insert({source:'mission-control',event:'todo_added',summary:title});
+      await logActivity('todo_added', title);
       $('todoTitle').value='';
       await load();
     };
@@ -139,7 +187,7 @@
       const title=$('workTitle').value.trim(); if(!title) return;
       const status=$('workStatus').value;
       await sb.from('mc_work_items').insert({title,status,owner:'guenther'});
-      await sb.from('mc_activity').insert({source:'mission-control',event:'work_item_added',summary:`${status}: ${title}`});
+      await logActivity('work_item_added', `${status}: ${title}`);
       $('workTitle').value='';
       await load();
     };
