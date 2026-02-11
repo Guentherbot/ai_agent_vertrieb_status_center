@@ -16,32 +16,64 @@
     .offline { background:#48181b; color:#ff9aa0; }
     .unknown { background:#2e3351; color:#b8c4ff; }
     code { background:#0e1428; padding:1px 6px; border-radius:6px; }
-    .bar { display:flex; gap:8px; align-items:center; margin:10px 0 14px; }
+    .bar { display:flex; gap:8px; align-items:center; margin:10px 0 14px; flex-wrap:wrap; }
     button { background:#1f2a4f; color:#d9e2ff; border:1px solid #32457f; border-radius:8px; padding:8px 10px; cursor:pointer; }
     button:hover { background:#253461; }
     .error { color:#ffb4b8; white-space:pre-wrap; }
+    .ok { color:#9fe0b2; }
+    .auth-wrap { max-width:420px; background:#141b33; border:1px solid #2a355f; border-radius:12px; padding:16px; }
+    .auth-wrap input { width:100%; margin:6px 0 10px; padding:10px; border-radius:8px; border:1px solid #32457f; background:#0e1428; color:#e7ecff; }
+    .hidden { display:none !important; }
   </style>
 </head>
 <body>
   <h1>Offbeat Status Center <span class="muted">MVP</span></h1>
   <p class="muted">Nur Betriebsdaten. Keine Inhalte. Keine personenbezogenen Chatdaten.</p>
 
-  <div class="bar">
-    <button id="reloadBtn">Neu laden</button>
-    <span id="meta" class="muted">lade…</span>
+  <div id="authBlock" class="auth-wrap hidden">
+    <h3 style="margin-top:0">Login erforderlich</h3>
+    <label>Email</label>
+    <input id="email" type="email" placeholder="you@company.com" autocomplete="username" />
+    <label>Passwort</label>
+    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+    <div class="bar">
+      <button id="loginBtn">Einloggen</button>
+      <button id="signupBtn">Account anlegen</button>
+    </div>
+    <div id="authMsg" class="muted"></div>
   </div>
 
-  <div id="error" class="error"></div>
-  <div id="app" class="grid"></div>
+  <div id="appBlock" class="hidden">
+    <div class="bar">
+      <button id="reloadBtn">Neu laden</button>
+      <button id="logoutBtn">Logout</button>
+      <span id="meta" class="muted">lade…</span>
+    </div>
+    <div id="error" class="error"></div>
+    <div id="app" class="grid"></div>
+  </div>
 
-  <script>
-    // Public Supabase values (anon key is intended for frontend use)
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
     const SUPABASE_URL = "https://xukihrjyeyatcwgmoakb.supabase.co";
+    // Legacy anon JWT key (works with PostgREST + RLS)
     const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1a2locmp5ZXlhdGN3Z21vYWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDAwMDMsImV4cCI6MjA4NjQxNjAwM30.wtWFTFrBdYYXEZ9eOXyTV15cdkVajmt6jNm0XAA5l00";
 
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+
+    const authBlock = document.getElementById('authBlock');
+    const appBlock = document.getElementById('appBlock');
     const app = document.getElementById('app');
     const meta = document.getElementById('meta');
     const errorEl = document.getElementById('error');
+    const authMsg = document.getElementById('authMsg');
 
     const statusClass = (s) => {
       if (!s) return 'unknown';
@@ -54,9 +86,7 @@
 
     const fmtTs = (ts) => {
       if (!ts) return '-';
-      try {
-        return new Date(ts).toLocaleString('de-DE');
-      } catch { return ts; }
+      try { return new Date(ts).toLocaleString('de-DE'); } catch { return ts; }
     };
 
     async function loadInstances() {
@@ -64,21 +94,14 @@
       app.innerHTML = '';
       meta.textContent = 'lade…';
 
-      const url = `${SUPABASE_URL}/rest/v1/instances?select=instance_code,status,last_heartbeat_at,current_version,model_ref,environment,host_label&order=updated_at.desc.nullslast`;
+      const { data, error } = await supabase
+        .from('instances')
+        .select('instance_code,status,last_heartbeat_at,current_version,model_ref,environment,host_label')
+        .order('updated_at', { ascending: false });
 
-      const res = await fetch(url, {
-        headers: {
-          apikey: SUPABASE_ANON,
-          Authorization: `Bearer ${SUPABASE_ANON}`,
-        },
-      });
+      if (error) throw error;
 
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Supabase Fehler ${res.status}: ${txt}`);
-      }
-
-      const rows = await res.json();
+      const rows = data || [];
       meta.textContent = `${rows.length} Instanz(en) · letzte Aktualisierung: ${new Date().toLocaleTimeString('de-DE')}`;
 
       if (!rows.length) {
@@ -99,17 +122,67 @@
       `).join('');
     }
 
-    async function safeLoad() {
+    function showAuth() {
+      authBlock.classList.remove('hidden');
+      appBlock.classList.add('hidden');
+    }
+
+    function showApp() {
+      authBlock.classList.add('hidden');
+      appBlock.classList.remove('hidden');
+    }
+
+    async function refreshUI() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showAuth();
+        return;
+      }
+      showApp();
       try {
         await loadInstances();
       } catch (err) {
-        meta.textContent = 'Fehler';
         errorEl.textContent = err?.message || String(err);
       }
     }
 
-    document.getElementById('reloadBtn').addEventListener('click', safeLoad);
-    safeLoad();
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      authMsg.textContent = 'Login…';
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        authMsg.textContent = `Login fehlgeschlagen: ${error.message}`;
+        return;
+      }
+      authMsg.textContent = 'Login erfolgreich';
+      await refreshUI();
+    });
+
+    document.getElementById('signupBtn').addEventListener('click', async () => {
+      authMsg.textContent = 'Account wird angelegt…';
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        authMsg.textContent = `Signup fehlgeschlagen: ${error.message}`;
+        return;
+      }
+      authMsg.textContent = 'Signup ok. Falls Mail-Bestätigung aktiv ist: bitte bestätigen, dann einloggen.';
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      showAuth();
+    });
+
+    document.getElementById('reloadBtn').addEventListener('click', refreshUI);
+
+    supabase.auth.onAuthStateChange(() => {
+      refreshUI();
+    });
+
+    refreshUI();
   </script>
 </body>
 </html>
