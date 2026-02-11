@@ -194,14 +194,24 @@
 
     $('logout').onclick=async()=>{await sb.auth.signOut(); location.reload();};
 
+    let initRunning = false;
+
     $('login').onclick=async()=>{
       $('authMsg').textContent='login...';
-      const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
-      $('authMsg').textContent=error?error.message:'ok';
-      if(!error) init();
+      try {
+        const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+        if (error) { $('authMsg').textContent=error.message; return; }
+        $('authMsg').textContent='ok';
+        await init(true);
+      } catch (e) {
+        $('authMsg').textContent='Login fehlgeschlagen (Netzwerk/Session).';
+        console.error(e);
+      }
     };
 
-    async function init(){
+    async function init(force=false){
+      if (initRunning && !force) return;
+      initRunning = true;
       try {
         const {data:{session}}=await sb.auth.getSession();
         if(!session){$('auth').classList.remove('hidden');$('app').classList.add('hidden');return;}
@@ -210,12 +220,13 @@
       } catch (e) {
         $('auth').classList.remove('hidden');
         $('app').classList.add('hidden');
-        $('authMsg').textContent = 'Session-Check Fehler. Bitte Login erneut.';
+        $('authMsg').textContent = 'Session-Check/Load Fehler. Bitte Login erneut.';
         console.error(e);
+      } finally {
+        initRunning = false;
       }
     }
 
-    sb.auth.onAuthStateChange(()=>init());
     init();
   </script>
 </body>
