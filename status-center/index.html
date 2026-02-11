@@ -38,7 +38,6 @@
     <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
     <div class="bar">
       <button id="loginBtn">Einloggen</button>
-      <button id="signupBtn">Account anlegen</button>
     </div>
     <div id="authMsg" class="muted"></div>
   </div>
@@ -157,18 +156,6 @@
       }
       authMsg.textContent = 'Login erfolgreich';
       await refreshUI();
-    });
-
-    document.getElementById('signupBtn').addEventListener('click', async () => {
-      authMsg.textContent = 'Account wird angelegt…';
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) {
-        authMsg.textContent = `Signup fehlgeschlagen: ${error.message}`;
-        return;
-      }
-      authMsg.textContent = 'Signup ok. Falls Mail-Bestätigung aktiv ist: bitte bestätigen, dann einloggen.';
     });
 
     document.getElementById('logoutBtn').addEventListener('click', async () => {
