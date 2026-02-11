@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Mission Control</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#0b1020;color:#e7ecff;margin:20px}
+    h1{margin:0 0 8px}.muted{color:#9fb0e0}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .card{background:#141b33;border:1px solid #2a355f;border-radius:12px;padding:12px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px}
+    .kpi{font-size:24px;font-weight:700}
+    .tab{padding:8px 10px;border-radius:8px;background:#1f2a4f;border:1px solid #32457f;cursor:pointer}
+    .tab.active{background:#2b3d77}
+    .hidden{display:none}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #2a355f;padding:8px;text-align:left;font-size:14px}
+    input,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #32457f;background:#0e1428;color:#e7ecff}
+    button{padding:8px 10px;border-radius:8px;border:1px solid #32457f;background:#1f2a4f;color:#d9e2ff;cursor:pointer}
+  </style>
+</head>
+<body>
+  <h1>Mission Control <span class="muted">internal</span></h1>
+  <p class="muted">Steuerzentrale für uns + Agentenaktivität. Keine Kundendaten-Inhalte nötig.</p>
+
+  <div id="auth" class="card hidden" style="max-width:420px">
+    <h3>Login</h3>
+    <label>Email</label><input id="email" type="email"/>
+    <label>Passwort</label><input id="password" type="password"/>
+    <div class="row" style="margin-top:8px"><button id="login">Einloggen</button><span id="authMsg" class="muted"></span></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="row" style="margin:10px 0">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="agents">Agents</button>
+      <button class="tab" data-tab="crm">CRM</button>
+      <button class="tab" data-tab="todo">Todo</button>
+      <button class="tab" data-tab="activity">Activity</button>
+      <button id="refresh">Refresh</button>
+      <button id="logout">Logout</button>
+      <span id="meta" class="muted"></span>
+    </div>
+
+    <section id="overview" class="panel">
+      <div class="grid">
+        <div class="card"><div class="muted">Agent-Instanzen</div><div id="k_instances" class="kpi">-</div></div>
+        <div class="card"><div class="muted">Online</div><div id="k_online" class="kpi">-</div></div>
+        <div class="card"><div class="muted">Leads gesamt</div><div id="k_leads" class="kpi">-</div></div>
+        <div class="card"><div class="muted">Tasks offen</div><div id="k_tasks" class="kpi">-</div></div>
+      </div>
+    </section>
+
+    <section id="agents" class="panel hidden card"><table><thead><tr><th>Code</th><th>Status</th><th>Heartbeat</th><th>Model</th></tr></thead><tbody id="t_agents"></tbody></table></section>
+    <section id="crm" class="panel hidden card"><table><thead><tr><th>Name</th><th>Firma</th><th>Stage</th><th>Next Follow-up</th></tr></thead><tbody id="t_crm"></tbody></table></section>
+
+    <section id="todo" class="panel hidden">
+      <div class="card">
+        <h3>Interne Tasks</h3>
+        <div class="row">
+          <input id="todoTitle" placeholder="Neuer Task" />
+          <button id="addTodo">Add</button>
+        </div>
+        <table><thead><tr><th>Task</th><th>Status</th><th>Created</th></tr></thead><tbody id="t_todo"></tbody></table>
+      </div>
+    </section>
+
+    <section id="activity" class="panel hidden card"><table><thead><tr><th>Zeit</th><th>Source</th><th>Event</th><th>Summary</th></tr></thead><tbody id="t_activity"></tbody></table></section>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+    const URL='https://xukihrjyeyatcwgmoakb.supabase.co';
+    const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1a2locmp5ZXlhdGN3Z21vYWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDAwMDMsImV4cCI6MjA4NjQxNjAwM30.wtWFTFrBdYYXEZ9eOXyTV15cdkVajmt6jNm0XAA5l00';
+    const sb=createClient(URL,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+
+    const $=id=>document.getElementById(id);
+    const fmt=t=>t?new Date(t).toLocaleString('de-DE'):'-';
+
+    function setTab(name){
+      document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+      document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
+      $(name).classList.remove('hidden');
+    }
+    document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+
+    async function load(){
+      const [{data:inst},{data:leads},{data:tasks},{data:todo},{data:act}] = await Promise.all([
+        sb.from('instances').select('instance_code,status,last_heartbeat_at,model_ref').order('updated_at',{ascending:false}),
+        sb.from('crm_leads').select('full_name,company,stage,next_followup_at').order('created_at',{ascending:false}).limit(20),
+        sb.from('crm_tasks').select('id,status').eq('status','open'),
+        sb.from('mc_todos').select('id,title,status,created_at').order('created_at',{ascending:false}).limit(50),
+        sb.from('mc_activity').select('ts,source,event,summary').order('ts',{ascending:false}).limit(50)
+      ]);
+
+      $('k_instances').textContent=(inst||[]).length;
+      $('k_online').textContent=(inst||[]).filter(x=>x.status==='online').length;
+      $('k_leads').textContent=(leads||[]).length;
+      $('k_tasks').textContent=(tasks||[]).length;
+      $('meta').textContent='updated '+new Date().toLocaleTimeString('de-DE');
+
+      $('t_agents').innerHTML=(inst||[]).map(x=>`<tr><td>${x.instance_code}</td><td>${x.status}</td><td>${fmt(x.last_heartbeat_at)}</td><td>${x.model_ref||'-'}</td></tr>`).join('');
+      $('t_crm').innerHTML=(leads||[]).map(x=>`<tr><td>${x.full_name||'-'}</td><td>${x.company||'-'}</td><td>${x.stage}</td><td>${fmt(x.next_followup_at)}</td></tr>`).join('');
+      $('t_todo').innerHTML=(todo||[]).map(x=>`<tr><td>${x.title}</td><td>${x.status}</td><td>${fmt(x.created_at)}</td></tr>`).join('');
+      $('t_activity').innerHTML=(act||[]).map(x=>`<tr><td>${fmt(x.ts)}</td><td>${x.source}</td><td>${x.event}</td><td>${x.summary||''}</td></tr>`).join('');
+    }
+
+    $('refresh').onclick=load;
+    $('addTodo').onclick=async()=>{
+      const title=$('todoTitle').value.trim(); if(!title) return;
+      await sb.from('mc_todos').insert({title,status:'open'});
+      $('todoTitle').value='';
+      await load();
+    };
+    $('logout').onclick=async()=>{await sb.auth.signOut(); location.reload();};
+
+    $('login').onclick=async()=>{
+      $('authMsg').textContent='login...';
+      const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+      $('authMsg').textContent=error?error.message:'ok';
+      if(!error) init();
+    };
+
+    async function init(){
+      const {data:{session}}=await sb.auth.getSession();
+      if(!session){$('auth').classList.remove('hidden');$('app').classList.add('hidden');return;}
+      $('auth').classList.add('hidden');$('app').classList.remove('hidden');
+      await load();
+    }
+
+    sb.auth.onAuthStateChange(()=>init());
+    init();
+  </script>
+</body>
+</html>
