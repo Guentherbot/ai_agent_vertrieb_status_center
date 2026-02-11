@@ -80,6 +80,10 @@
         <div class="muted">Letzter Commit</div>
         <div id="git_last">-</div>
       </div>
+      <div class="card" style="margin-top:10px">
+        <div class="muted">Today Timeline (hourly events)</div>
+        <div id="timeline" class="fun">-</div>
+      </div>
     </section>
 
     <section id="work" class="panel hidden">
@@ -135,6 +139,16 @@
       } catch { $('git_last').textContent='telemetry.json nicht verfügbar'; }
     }
 
+    function renderTimeline(activity){
+      const buckets=Array.from({length:24},(_,h)=>({h,c:0}));
+      for(const a of (activity||[])){
+        const d=new Date(a.ts); if(Number.isNaN(d.getTime())) continue;
+        buckets[d.getHours()].c++;
+      }
+      const lines=buckets.filter(b=>b.c>0).slice(-12).map(b=>`${String(b.h).padStart(2,'0')}:00 ${'▮'.repeat(Math.min(12,b.c))} (${b.c})`);
+      $('timeline').textContent=lines.length?lines.join('  ·  '):'Heute noch keine Events';
+    }
+
     function computePulse(activity){
       const doing=workItems.filter(x=>x.status==='in_progress').length;
       const done=workItems.filter(x=>x.status==='done').length;
@@ -164,6 +178,13 @@
       ]);
 
       workItems=(work||[]);
+      if(!workItems.some(x=>x.status==='in_progress') && (act||[]).length){
+        const latest=act[0];
+        if(latest && latest.event && latest.event!=='work_item_added' && latest.event!=='work_status_changed'){
+          await sb.from('mc_work_items').insert({title:`Auto: ${latest.event}`,status:'in_progress',owner:'guenther'});
+          workItems=[{id:-1,title:`Auto: ${latest.event}`,status:'in_progress',owner:'guenther',updated_at:new Date().toISOString()}, ...workItems];
+        }
+      }
       window.__openTasks=(tasks||[]).length;
       const doing=workItems.find(x=>x.status==='in_progress') || workItems.find(x=>x.status==='todo');
       const done=workItems.find(x=>x.status==='done');
@@ -187,6 +208,7 @@
 
       document.querySelectorAll('button[data-save-id]').forEach(btn=>btn.onclick=async()=>{const id=Number(btn.dataset.saveId);const sel=document.querySelector(`select[data-work-id='${id}']`);await updateWorkStatus(id,sel.value);});
       computePulse(act||[]);
+      renderTimeline(act||[]);
       await loadTelemetry();
     }
 
