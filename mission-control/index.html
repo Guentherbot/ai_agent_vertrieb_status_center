@@ -19,13 +19,13 @@
     input,textarea,select{padding:8px;border-radius:8px;border:1px solid #32457f;background:#0e1428;color:#e7ecff}
     input,textarea{width:100%}
     button{padding:8px 10px;border-radius:8px;border:1px solid #32457f;background:#1f2a4f;color:#d9e2ff;cursor:pointer}
-    .pill{padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #3a4f8f}
-    .danger{color:#ffb5b5}
+    .danger{color:#ffb5b5}.ok{color:#b6f9c3}.fun{font-size:13px;color:#c5d6ff}
+    .badge{display:inline-block;padding:2px 8px;border:1px solid #3b4f87;border-radius:999px;font-size:12px}
   </style>
 </head>
 <body>
   <h1>Mission Control <span class="muted">internal</span></h1>
-  <p class="muted">Steuerzentrale für uns + Agentenaktivität. Keine Kundendaten-Inhalte nötig.</p>
+  <p class="muted">Leitwarte für uns + Agenten. Fokus: Transparenz, Velocity, Blocker.</p>
 
   <div id="auth" class="card" style="max-width:420px">
     <h3>Login</h3>
@@ -37,6 +37,7 @@
   <div id="app" class="hidden">
     <div class="row" style="margin:10px 0">
       <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="pulse">Pulse</button>
       <button class="tab" data-tab="work">Worklog</button>
       <button class="tab" data-tab="agents">Agents</button>
       <button class="tab" data-tab="crm">CRM</button>
@@ -49,22 +50,12 @@
 
     <section id="overview" class="panel">
       <div class="grid">
+        <div class="card"><div class="muted">Günther macht gerade</div><div id="now_doing">-</div></div>
+        <div class="card"><div class="muted">Zuletzt erledigt</div><div id="now_done">-</div></div>
         <div class="card"><div class="muted">Agent-Instanzen</div><div id="k_instances" class="kpi">-</div></div>
         <div class="card"><div class="muted">Online</div><div id="k_online" class="kpi">-</div></div>
-        <div class="card"><div class="muted">Leads gesamt</div><div id="k_leads" class="kpi">-</div></div>
-        <div class="card"><div class="muted">Tasks offen</div><div id="k_tasks" class="kpi">-</div></div>
         <div class="card"><div class="muted">Work: In Arbeit</div><div id="k_work_doing" class="kpi">-</div></div>
-        <div class="card"><div class="muted">Work: Blocker</div><div id="k_work_blocked" class="kpi">-</div></div>
-      </div>
-      <div class="grid" style="margin-top:10px">
-        <div class="card">
-          <div class="muted">Günther macht gerade</div>
-          <div id="now_doing">-</div>
-        </div>
-        <div class="card">
-          <div class="muted">Zuletzt erledigt</div>
-          <div id="now_done">-</div>
-        </div>
+        <div class="card"><div class="muted">Work: Blocker</div><div id="k_work_blocked" class="kpi danger">-</div></div>
       </div>
       <div class="card" style="margin-top:10px">
         <h3 class="danger">Blocker (pinned)</h3>
@@ -72,9 +63,28 @@
       </div>
     </section>
 
+    <section id="pulse" class="panel hidden">
+      <div class="grid">
+        <div class="card"><div class="muted">Ship Velocity (today)</div><div id="p_velocity" class="kpi">-</div><div class="fun">done*3 + in_progress</div></div>
+        <div class="card"><div class="muted">Flow State</div><div id="p_flow" class="kpi">-</div><div class="fun">done / (done+blocked+in_progress)</div></div>
+        <div class="card"><div class="muted">Chaos Index</div><div id="p_chaos" class="kpi">-</div><div class="fun">blocker pressure + open tasks</div></div>
+        <div class="card"><div class="muted">Activity last 60m</div><div id="p_activity60" class="kpi">-</div><div class="fun">events/min</div></div>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="muted">Commits heute</div><div id="git_commits" class="kpi">-</div></div>
+        <div class="card"><div class="muted">Code + / - heute</div><div id="git_churn" class="kpi">-</div></div>
+        <div class="card"><div class="muted">Files touched</div><div id="git_files" class="kpi">-</div></div>
+        <div class="card"><div class="muted">Token usage</div><div class="kpi">soon™</div><div class="fun">Nächster Schritt: Session-Usage ingest</div></div>
+      </div>
+      <div class="card" style="margin-top:10px">
+        <div class="muted">Letzter Commit</div>
+        <div id="git_last">-</div>
+      </div>
+    </section>
+
     <section id="work" class="panel hidden">
       <div class="card">
-        <h3>Worklog (in Arbeit / erledigt / blocker)</h3>
+        <h3>Worklog</h3>
         <div class="row">
           <input id="workTitle" placeholder="Neues Work Item" />
           <select id="workStatus"><option value="in_progress">in_progress</option><option value="done">done</option><option value="blocked">blocked</option><option value="todo">todo</option></select>
@@ -90,10 +100,7 @@
     <section id="todo" class="panel hidden">
       <div class="card">
         <h3>Interne Tasks</h3>
-        <div class="row">
-          <input id="todoTitle" placeholder="Neuer Task" />
-          <button id="addTodo">Add</button>
-        </div>
+        <div class="row"><input id="todoTitle" placeholder="Neuer Task" /><button id="addTodo">Add</button></div>
         <table><thead><tr><th>Task</th><th>Status</th><th>Created</th></tr></thead><tbody id="t_todo"></tbody></table>
       </div>
     </section>
@@ -106,28 +113,44 @@
     const URL='https://xukihrjyeyatcwgmoakb.supabase.co';
     const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1a2locmp5ZXlhdGN3Z21vYWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDAwMDMsImV4cCI6MjA4NjQxNjAwM30.wtWFTFrBdYYXEZ9eOXyTV15cdkVajmt6jNm0XAA5l00';
     const sb=createClient(URL,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
-
     const $=id=>document.getElementById(id);
     const fmt=t=>t?new Date(t).toLocaleString('de-DE'):'-';
     const esc=s=>(s||'').replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
-
     let workItems=[];
+    let initRunning=false;
 
-    function setTab(name){
-      document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
-      document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));
-      $(name).classList.remove('hidden');
-    }
+    function setTab(name){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));document.querySelectorAll('.panel').forEach(p=>p.classList.add('hidden'));$(name).classList.remove('hidden');}
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
 
-    async function logActivity(event, summary){
-      await sb.from('mc_activity').insert({source:'mission-control',event,summary});
+    async function logActivity(event, summary){ await sb.from('mc_activity').insert({source:'mission-control',event,summary}); }
+    async function updateWorkStatus(id, status){ await sb.from('mc_work_items').update({status}).eq('id',id); await logActivity('work_status_changed', `id=${id} -> ${status}`); await load(); }
+
+    async function loadTelemetry(){
+      try {
+        const t=await fetch('./telemetry.json?ts='+Date.now()).then(r=>r.json());
+        $('git_commits').textContent=t.commits_today ?? '-';
+        $('git_churn').textContent=`+${t.insertions_today||0} / -${t.deletions_today||0}`;
+        $('git_files').textContent=t.files_changed_today ?? '-';
+        $('git_last').textContent=t.last_commit || '-';
+      } catch { $('git_last').textContent='telemetry.json nicht verfügbar'; }
     }
 
-    async function updateWorkStatus(id, status){
-      await sb.from('mc_work_items').update({status}).eq('id',id);
-      await logActivity('work_status_changed', `id=${id} -> ${status}`);
-      await load();
+    function computePulse(activity){
+      const doing=workItems.filter(x=>x.status==='in_progress').length;
+      const done=workItems.filter(x=>x.status==='done').length;
+      const blocked=workItems.filter(x=>x.status==='blocked').length;
+      const openTasks=(window.__openTasks||0);
+      const velocity=done*3+doing;
+      const flowDen=Math.max(1,done+doing+blocked);
+      const flow=Math.round((done/flowDen)*100);
+      const chaos=Math.min(99,blocked*20 + Math.min(40,openTasks*5));
+      const now=Date.now();
+      const ev60=(activity||[]).filter(a=>new Date(a.ts).getTime() > now-60*60*1000).length;
+      const perMin=(ev60/60).toFixed(2);
+      $('p_velocity').textContent=velocity;
+      $('p_flow').textContent=flow+'%';
+      $('p_chaos').textContent=chaos;
+      $('p_activity60').textContent=perMin;
     }
 
     async function load(){
@@ -136,109 +159,51 @@
         sb.from('crm_leads').select('full_name,company,stage,next_followup_at').order('created_at',{ascending:false}).limit(20),
         sb.from('crm_tasks').select('id,status').eq('status','open'),
         sb.from('mc_todos').select('id,title,status,created_at').order('created_at',{ascending:false}).limit(50),
-        sb.from('mc_activity').select('ts,source,event,summary').order('ts',{ascending:false}).limit(50),
+        sb.from('mc_activity').select('ts,source,event,summary').order('ts',{ascending:false}).limit(100),
         sb.from('mc_work_items').select('id,title,status,owner,updated_at').order('updated_at',{ascending:false}).limit(100)
       ]);
 
       workItems=(work||[]);
+      window.__openTasks=(tasks||[]).length;
+      const doing=workItems.find(x=>x.status==='in_progress') || workItems.find(x=>x.status==='todo');
+      const done=workItems.find(x=>x.status==='done');
+      $('now_doing').innerHTML=doing?`${esc(doing.title)} <span class='badge'>${esc(doing.owner||'-')}</span>`:'Kein aktives Item';
+      $('now_done').textContent=done?`${done.title} (${fmt(done.updated_at)})`:'Noch nichts abgeschlossen';
 
       $('k_instances').textContent=(inst||[]).length;
       $('k_online').textContent=(inst||[]).filter(x=>x.status==='online').length;
-      $('k_leads').textContent=(leads||[]).length;
-      $('k_tasks').textContent=(tasks||[]).length;
       $('k_work_doing').textContent=workItems.filter(x=>x.status==='in_progress').length;
       $('k_work_blocked').textContent=workItems.filter(x=>x.status==='blocked').length;
-      const doing=workItems.find(x=>x.status==='in_progress') || workItems.find(x=>x.status==='todo');
-      const done=workItems.find(x=>x.status==='done');
-      $('now_doing').textContent=doing ? `${doing.title} (${doing.owner||'-'})` : 'Kein aktives Item';
-      $('now_done').textContent=done ? `${done.title} (${fmt(done.updated_at)})` : 'Noch nichts abgeschlossen';
       $('meta').textContent='updated '+new Date().toLocaleTimeString('de-DE');
 
       $('t_agents').innerHTML=(inst||[]).map(x=>`<tr><td>${x.instance_code}</td><td>${x.status}</td><td>${fmt(x.last_heartbeat_at)}</td><td>${x.model_ref||'-'}</td></tr>`).join('');
       $('t_crm').innerHTML=(leads||[]).map(x=>`<tr><td>${x.full_name||'-'}</td><td>${x.company||'-'}</td><td>${x.stage}</td><td>${fmt(x.next_followup_at)}</td></tr>`).join('');
       $('t_todo').innerHTML=(todo||[]).map(x=>`<tr><td>${esc(x.title)}</td><td>${x.status}</td><td>${fmt(x.created_at)}</td></tr>`).join('');
       $('t_activity').innerHTML=(act||[]).map(x=>`<tr><td>${fmt(x.ts)}</td><td>${esc(x.source)}</td><td>${esc(x.event)}</td><td>${esc(x.summary||'')}</td></tr>`).join('');
-
-      $('t_work').innerHTML=workItems.map(x=>`<tr>
-          <td>${esc(x.title)}</td>
-          <td>
-            <select data-work-id="${x.id}" class="work-status">
-              <option value="todo" ${x.status==='todo'?'selected':''}>todo</option>
-              <option value="in_progress" ${x.status==='in_progress'?'selected':''}>in_progress</option>
-              <option value="blocked" ${x.status==='blocked'?'selected':''}>blocked</option>
-              <option value="done" ${x.status==='done'?'selected':''}>done</option>
-            </select>
-          </td>
-          <td>${esc(x.owner||'-')}</td>
-          <td>${fmt(x.updated_at)}</td>
-          <td><button data-save-id="${x.id}">Save</button></td>
-        </tr>`).join('');
+      $('t_work').innerHTML=workItems.map(x=>`<tr><td>${esc(x.title)}</td><td><select data-work-id='${x.id}'><option value='todo' ${x.status==='todo'?'selected':''}>todo</option><option value='in_progress' ${x.status==='in_progress'?'selected':''}>in_progress</option><option value='blocked' ${x.status==='blocked'?'selected':''}>blocked</option><option value='done' ${x.status==='done'?'selected':''}>done</option></select></td><td>${esc(x.owner||'-')}</td><td>${fmt(x.updated_at)}</td><td><button data-save-id='${x.id}'>Save</button></td></tr>`).join('');
 
       const blockers=workItems.filter(x=>x.status==='blocked');
-      $('t_blockers').innerHTML=blockers.length
-        ? blockers.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.owner||'-')}</td><td>${fmt(x.updated_at)}</td></tr>`).join('')
-        : '<tr><td colspan="3" class="muted">Keine Blocker aktuell</td></tr>';
+      $('t_blockers').innerHTML=blockers.length?blockers.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.owner||'-')}</td><td>${fmt(x.updated_at)}</td></tr>`).join(''):'<tr><td colspan="3" class="muted">Keine Blocker aktuell</td></tr>';
 
-      document.querySelectorAll('button[data-save-id]').forEach(btn=>{
-        btn.onclick=async()=>{
-          const id=Number(btn.dataset.saveId);
-          const sel=document.querySelector(`select[data-work-id="${id}"]`);
-          await updateWorkStatus(id, sel.value);
-        };
-      });
+      document.querySelectorAll('button[data-save-id]').forEach(btn=>btn.onclick=async()=>{const id=Number(btn.dataset.saveId);const sel=document.querySelector(`select[data-work-id='${id}']`);await updateWorkStatus(id,sel.value);});
+      computePulse(act||[]);
+      await loadTelemetry();
     }
 
     $('refresh').onclick=load;
-    $('addTodo').onclick=async()=>{
-      const title=$('todoTitle').value.trim(); if(!title) return;
-      await sb.from('mc_todos').insert({title,status:'open'});
-      await logActivity('todo_added', title);
-      $('todoTitle').value='';
-      await load();
-    };
-
-    $('addWork').onclick=async()=>{
-      const title=$('workTitle').value.trim(); if(!title) return;
-      const status=$('workStatus').value;
-      await sb.from('mc_work_items').insert({title,status,owner:'guenther'});
-      await logActivity('work_item_added', `${status}: ${title}`);
-      $('workTitle').value='';
-      await load();
-    };
-
-    $('logout').onclick=async()=>{await sb.auth.signOut(); location.reload();};
-
-    let initRunning = false;
+    $('addTodo').onclick=async()=>{const title=$('todoTitle').value.trim(); if(!title)return; await sb.from('mc_todos').insert({title,status:'open'}); await logActivity('todo_added',title); $('todoTitle').value=''; await load();};
+    $('addWork').onclick=async()=>{const title=$('workTitle').value.trim(); if(!title)return; const status=$('workStatus').value; await sb.from('mc_work_items').insert({title,status,owner:'guenther'}); await logActivity('work_item_added',`${status}: ${title}`); $('workTitle').value=''; await load();};
+    $('logout').onclick=async()=>{await sb.auth.signOut();location.reload();};
 
     $('login').onclick=async()=>{
       $('authMsg').textContent='login...';
-      try {
-        const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
-        if (error) { $('authMsg').textContent=error.message; return; }
-        $('authMsg').textContent='ok';
-        await init(true);
-      } catch (e) {
-        $('authMsg').textContent='Login fehlgeschlagen (Netzwerk/Session).';
-        console.error(e);
-      }
+      try {const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error){$('authMsg').textContent=error.message;return;} $('authMsg').textContent='ok'; await init(true);} catch(e){$('authMsg').textContent='Login fehlgeschlagen.';console.error(e);}
     };
 
     async function init(force=false){
-      if (initRunning && !force) return;
-      initRunning = true;
-      try {
-        const {data:{session}}=await sb.auth.getSession();
-        if(!session){$('auth').classList.remove('hidden');$('app').classList.add('hidden');return;}
-        $('auth').classList.add('hidden');$('app').classList.remove('hidden');
-        await load();
-      } catch (e) {
-        $('auth').classList.remove('hidden');
-        $('app').classList.add('hidden');
-        $('authMsg').textContent = 'Session-Check/Load Fehler. Bitte Login erneut.';
-        console.error(e);
-      } finally {
-        initRunning = false;
-      }
+      if(initRunning && !force) return; initRunning=true;
+      try {const {data:{session}}=await sb.auth.getSession(); if(!session){$('auth').classList.remove('hidden');$('app').classList.add('hidden');return;} $('auth').classList.add('hidden');$('app').classList.remove('hidden'); await load();}
+      catch(e){$('auth').classList.remove('hidden');$('app').classList.add('hidden');$('authMsg').textContent='Session-Check/Load Fehler.'; console.error(e);} finally{initRunning=false;}
     }
 
     init();
