@@ -56,6 +56,16 @@
         <div class="card"><div class="muted">Work: In Arbeit</div><div id="k_work_doing" class="kpi">-</div></div>
         <div class="card"><div class="muted">Work: Blocker</div><div id="k_work_blocked" class="kpi">-</div></div>
       </div>
+      <div class="grid" style="margin-top:10px">
+        <div class="card">
+          <div class="muted">Günther macht gerade</div>
+          <div id="now_doing">-</div>
+        </div>
+        <div class="card">
+          <div class="muted">Zuletzt erledigt</div>
+          <div id="now_done">-</div>
+        </div>
+      </div>
       <div class="card" style="margin-top:10px">
         <h3 class="danger">Blocker (pinned)</h3>
         <table><thead><tr><th>Title</th><th>Owner</th><th>Updated</th></tr></thead><tbody id="t_blockers"></tbody></table>
@@ -138,6 +148,10 @@
       $('k_tasks').textContent=(tasks||[]).length;
       $('k_work_doing').textContent=workItems.filter(x=>x.status==='in_progress').length;
       $('k_work_blocked').textContent=workItems.filter(x=>x.status==='blocked').length;
+      const doing=workItems.find(x=>x.status==='in_progress') || workItems.find(x=>x.status==='todo');
+      const done=workItems.find(x=>x.status==='done');
+      $('now_doing').textContent=doing ? `${doing.title} (${doing.owner||'-'})` : 'Kein aktives Item';
+      $('now_done').textContent=done ? `${done.title} (${fmt(done.updated_at)})` : 'Noch nichts abgeschlossen';
       $('meta').textContent='updated '+new Date().toLocaleTimeString('de-DE');
 
       $('t_agents').innerHTML=(inst||[]).map(x=>`<tr><td>${x.instance_code}</td><td>${x.status}</td><td>${fmt(x.last_heartbeat_at)}</td><td>${x.model_ref||'-'}</td></tr>`).join('');
